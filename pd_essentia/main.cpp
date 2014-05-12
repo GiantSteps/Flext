@@ -57,7 +57,7 @@ class pd_essentia : public flext_dsp
     int essentiaBufferCounter;
     
     vector<Real> audioBuffer;
-    float myBuffer[2048];
+
     
     /////// PARAMS //////////////
     int sampleRate, frameSize, hopSize;
@@ -70,8 +70,6 @@ class pd_essentia : public flext_dsp
 
     pd_essentia()
     {
-
-        
         AddInSignal("In");
         AddOutSignal("Out");
         AddOutList("FFT");
@@ -107,7 +105,7 @@ class pd_essentia : public flext_dsp
         while(n--) {
             //Fill Essentia vector
             audioBuffer[essentiaBufferCounter] = *in;
-            myBuffer[essentiaBufferCounter] = *in;
+
             
             essentiaBufferCounter++;
             if(essentiaBufferCounter>=frameSize)
