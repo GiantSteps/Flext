@@ -17,6 +17,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <map>
 
 #include <essentia/algorithmfactory.h>
 #include <essentia/essentiamath.h>
@@ -53,17 +54,42 @@ class pd_essentia : public flext_dsp
 {
     FLEXT_HEADER(pd_essentia, flext_dsp)
     
-    int fft_counter;
+    int essentiaBufferCounter;
     
+    vector<Real> audioBuffer;
+    float myBuffer[2048];
+    
+    /////// PARAMS //////////////
+    int sampleRate, frameSize, hopSize;
+    
+    float myFloat;
+
+    
+    Pool pool;
 
 
     pd_essentia()
     {
+
+        
         AddInSignal("In");
         AddOutSignal("Out");
         AddOutList("FFT");
         
         FLEXT_ADDBANG(0,my_bang);
+        
+        /////// PARAMS //////////////
+        sampleRate = Samplerate();
+        std::cout << "Samplerate: " << sampleRate << "\n";
+        frameSize = 2048;
+        hopSize = 1024;
+        
+        for(int i=0; i<frameSize; i++)
+            audioBuffer.push_back(0.0);
+
+        essentiaBufferCounter = 0;
+        
+
         
         
     }
@@ -74,12 +100,22 @@ class pd_essentia : public flext_dsp
 
     }
     
-    virtual void m_signal(int n, t_sample *const *insigs, t_sample *const *outsigs)
+    void m_signal(int n, t_sample *const *insigs, t_sample *const *outsigs)
     {
         const t_sample *in = insigs[0];
         t_sample *out = outsigs[0];
         while(n--) {
+            //Fill Essentia vector
+            audioBuffer[essentiaBufferCounter] = *in;
+            myBuffer[essentiaBufferCounter] = *in;
+            
+            essentiaBufferCounter++;
+            if(essentiaBufferCounter>=frameSize)
+                essentiaBufferCounter=0;
+            
             *(out++) = *(in++);
+            
+
         }
     }
     
@@ -111,44 +147,22 @@ class pd_essentia : public flext_dsp
     }
     
     void my_bang() {
-        AtomList fftToMax(10);
-        
-        
-        for(int i=0; i<10; i++) {
-            t_atom sample;
-            
-            SetFloat(sample, 5.0);
-            
-            fftToMax[i] = sample;
-        }
-        
-        std::cout << "Hello\n";
-        
-        ToOutList(1, fftToMax);
         
         //
         string audioFilename = "/Users/carthach/Dev/Pd/User_Libraries/in.wav";
         string outputFilename = "/Users/carthach/Dev/Pd/User_Libraries/out.sig";
         
-        
         // register the algorithms in the factory(ies)
         essentia::init();
-        
-        Pool pool;
-        
-        /////// PARAMS //////////////
-        int sampleRate = 44100;
-        int frameSize = 2048;
-        int hopSize = 1024;
         
         // we want to compute the MFCC of a file: we need the create the following:
         // audioloader -> framecutter -> windowing -> FFT -> MFCC
         
         AlgorithmFactory& factory = standard::AlgorithmFactory::instance();
         
-        Algorithm* audio = factory.create("MonoLoader",
-                                          "filename", audioFilename,
-                                          "sampleRate", sampleRate);
+//        Algorithm* audio = factory.create("MonoLoader",
+//                                          "filename", audioFilename,
+//                                          "sampleRate", sampleRate);
         
         Algorithm* fc    = factory.create("FrameCutter",
                                           "frameSize", frameSize,
@@ -166,10 +180,10 @@ class pd_essentia : public flext_dsp
         /////////// CONNECTING THE ALGORITHMS ////////////////
         cout << "-------- connecting algos ---------" << endl;
         
-        // Audio -> FrameCutter
-        vector<Real> audioBuffer;
+//        // Audio -> FrameCutter
+//        vector<Real> audioBuffer;
         
-        audio->output("audio").set(audioBuffer);
+//        audio->output("audio").set(audioBuffer);
         fc->input("signal").set(audioBuffer);
         
         // FrameCutter -> Windowing -> Spectrum
@@ -191,11 +205,10 @@ class pd_essentia : public flext_dsp
         mfcc->output("mfcc").set(mfccCoeffs);
         
         
-        
         /////////// STARTING THE ALGORITHMS //////////////////
         cout << "-------- start processing " << audioFilename << " --------" << endl;
         
-        audio->compute();
+//        audio->compute();
         
         while (true) {
             
@@ -215,6 +228,7 @@ class pd_essentia : public flext_dsp
             mfcc->compute();
             
             pool.add("lowlevel.mfcc", mfccCoeffs);
+            pool.add("spec", spectrum);
             
         }
         
@@ -237,12 +251,19 @@ class pd_essentia : public flext_dsp
         output->input("pool").set(aggrPool);
         output->compute();
         
-        AtomList names = stringVectorToList(aggrPool.descriptorNames());
+
         
-        ToOutList(1, names);
+        std::map<string, vector<Real> > realPool = aggrPool.getRealPool();
         
+
         
-        delete audio;
+        AtomList vals = floatVectorToList(spectrum);
+        
+        ToOutList(1, vals);
+        
+
+        
+//        delete audio;
         delete fc;
         delete w;
         delete spec;
@@ -251,6 +272,8 @@ class pd_essentia : public flext_dsp
         delete output;
         
         essentia::shutdown();
+        
+
         
         
 
